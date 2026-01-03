@@ -141,7 +141,7 @@ router.get(
       }
 
       // Existing user → dashboard
-      return res.redirect(`${frontend_url}/select-idea`);
+      return res.redirect(`${frontend_url}`);
     } catch (err) {
       console.error("Google callback error:", err);
       return res.redirect(`${frontend_url}/login`);
