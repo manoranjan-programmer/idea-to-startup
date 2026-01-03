@@ -82,15 +82,7 @@ app.get("/api/health", (req, res) => {
 /* =====================================================
    SERVE FRONTEND (VERY IMPORTANT)
 ===================================================== */
-const clientBuildPath = path.join(__dirname, "../client/dist");
-
-// Serve React static files
-app.use(express.static(clientBuildPath));
-
-// SPA fallback (fixes Google OAuth redirect issue)
-app.use((req, res) => {
-  res.sendFile(path.join(clientBuildPath, "index.html"));
-});
+//
 
 /* ===================== ERROR HANDLER ===================== */
 app.use((err, req, res, next) => {
