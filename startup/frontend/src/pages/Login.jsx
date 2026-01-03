@@ -1,9 +1,10 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import "./Login.css";
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // to get current route
   const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
   /* =========================
@@ -19,15 +20,16 @@ const Login = () => {
       const res = await fetch(`${BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // IMPORTANT for session
+        credentials: "include", // important for session
         body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        // ✅ Redirect to Selection Page (NOT directly to idea submission)
-        navigate("/select-idea");
+        // ✅ Redirect to Selection Page or previous page if stored
+        const redirectTo = location.state?.from || "/select-idea";
+        navigate(redirectTo);
       } else {
         alert(data.message || "Login failed");
       }
@@ -41,8 +43,11 @@ const Login = () => {
      GOOGLE LOGIN HANDLER
   ========================= */
   const handleGoogleLogin = () => {
-    // Google OAuth will redirect back to frontend → then route to selection page
-    window.location.href = `${BASE_URL}/auth/google`;
+    // Preserve current route
+    const currentPath = location.pathname; // e.g., /select-idea
+    window.location.href = `${BASE_URL}/auth/google?redirect=${encodeURIComponent(
+      currentPath
+    )}`;
   };
 
   return (

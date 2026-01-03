@@ -4,7 +4,7 @@ const passport = require("passport");
 const router = express.Router();
 const User = require("../models/User");
 
-const frontend_url = process.env.GOOGLE_CLIENT_URL;
+const FRONTEND_URL = process.env.GOOGLE_CLIENT_URL;
 
 /* ===========================
    EMAIL / PASSWORD SIGNUP
@@ -31,15 +31,13 @@ router.post("/signup", async (req, res) => {
       email,
       password: hashedPassword,
       provider: "local",
-      isVerified: false, // must verify email
+      isVerified: false,
     });
 
-    // 🔔 Later you can add nodemailer here
     return res.status(201).json({
       message: "Signup successful. Please verify your email before login.",
     });
   } catch (err) {
-    // FINAL DUPLICATE SAFETY
     if (err.code === 11000) {
       return res.status(409).json({
         message: "Email already exists. Please login.",
@@ -83,7 +81,6 @@ router.post("/login", async (req, res, next) => {
       return res.status(400).json({ message: "User not found" });
     }
 
-    // If Google-only account
     if (!user.password) {
       return res.status(400).json({
         message: "Please login using Google",
@@ -108,22 +105,30 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
-
 /* ===========================
    GOOGLE OAUTH START
+   ✅ SAVE REDIRECT PATH
 =========================== */
 router.get(
   "/google",
-  passport.authenticate("google", { scope: ["profile", "email"] })
+  (req, res, next) => {
+    // Save redirect path (default → /select-idea)
+    req.session.redirectTo = req.query.redirect || "/select-idea";
+    next();
+  },
+  passport.authenticate("google", {
+    scope: ["profile", "email"],
+  })
 );
 
 /* ===========================
    GOOGLE OAUTH CALLBACK
+   ✅ REDIRECT BACK CORRECTLY
 =========================== */
 router.get(
   "/google/callback",
   passport.authenticate("google", {
-    failureRedirect: `${frontend_url}/login`,
+    failureRedirect: `${FRONTEND_URL}/login`,
     session: true,
   }),
   async (req, res) => {
@@ -134,17 +139,17 @@ router.get(
         await req.user.save();
       }
 
-      // First-time Google signup → login page
-      if (req.user.isNewSignup) {
-        delete req.user.isNewSignup;
-        return res.redirect(`${frontend_url}/login`);
-      }
+      // Get saved redirect or fallback
+      const redirectPath = req.session.redirectTo || "/select-idea";
 
-      // Existing user → dashboard
-      return res.redirect(`${frontend_url}`);
+      // Clear session value
+      req.session.redirectTo = null;
+
+      // ✅ Redirect to correct frontend page
+      return res.redirect(`${FRONTEND_URL}${redirectPath}`);
     } catch (err) {
       console.error("Google callback error:", err);
-      return res.redirect(`${frontend_url}/login`);
+      return res.redirect(`${FRONTEND_URL}/login`);
     }
   }
 );
