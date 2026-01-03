@@ -3,16 +3,10 @@ const express = require("express");
 const mongoose = require("mongoose");
 const session = require("express-session");
 const passport = require("./config/passport");
-const path = require("path");
 const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
-
-/* ===================== ROUTES ===================== */
-const feasibilityRoutes = require("./routes/feasibility");
-const uploadRoutes = require("./routes/uploadRoutes");
-const authRoutes = require("./routes/auth");
 
 /* ===================== TRUST PROXY ===================== */
 app.set("trust proxy", 1);
@@ -23,8 +17,8 @@ app.use(express.urlencoded({ extended: true }));
 
 /* ===================== CORS CONFIG ===================== */
 const allowedOrigins = [
-  process.env.GOOGLE_CLIENT_URL, // Render frontend
-  "http://localhost:5173",       // Local dev
+  process.env.GOOGLE_CLIENT_URL, // frontend Render URL
+  "http://localhost:5173",
 ];
 
 app.use(
@@ -32,25 +26,24 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(null, false);
+      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-/* ===================== SESSION ===================== */
+/* ===================== SESSION (🔥 CRITICAL FIX) ===================== */
 app.use(
   session({
     name: "startup.sid",
-    secret: process.env.SESSION_SECRET || "default_secret",
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      secure: true,          // REQUIRED on Render
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "none",      // 🔥 REQUIRED for Google OAuth
       maxAge: 1000 * 60 * 60 * 24,
     },
   })
@@ -60,29 +53,19 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-/* ===================== API ROUTES ===================== */
-app.use("/auth", authRoutes);
-app.use("/api/feasibility", feasibilityRoutes);
-app.use("/api/upload", uploadRoutes);
+/* ===================== ROUTES ===================== */
+app.use("/auth", require("./routes/auth"));
+app.use("/api/feasibility", require("./routes/feasibility"));
+app.use("/api/upload", require("./routes/uploadRoutes"));
 
 /* ===================== HEALTH CHECK ===================== */
-app.get("/api/health", (req, res) => {
+app.get("/", (req, res) => {
   res.status(200).json({
     status: "OK",
-    message: "🚀 Backend is running successfully",
-    services: {
-      feasibility: true,
-      upload: true,
-      auth: true,
-      database: mongoose.connection.readyState === 1,
-    },
+    message: "🚀 Backend running",
+    loggedIn: !!req.user,
   });
 });
-
-/* =====================================================
-   SERVE FRONTEND (VERY IMPORTANT)
-===================================================== */
-//
 
 /* ===================== ERROR HANDLER ===================== */
 app.use((err, req, res, next) => {
@@ -94,7 +77,6 @@ app.use((err, req, res, next) => {
 });
 
 /* ===================== DB ===================== */
-mongoose.set("strictQuery", true);
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected"))
@@ -107,6 +89,5 @@ mongoose
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log("🔑 Gemini Key Loaded:", !!process.env.GEMINI_API_KEY);
+  console.log(`🌍 Environment: production`);
 });

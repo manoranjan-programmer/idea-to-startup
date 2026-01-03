@@ -4,7 +4,7 @@ const passport = require("passport");
 const router = express.Router();
 const User = require("../models/User");
 
-const frontend_url = process.env.GOOGLE_CLIENT_URL;
+
 
 /* ===========================
    EMAIL / PASSWORD SIGNUP
@@ -123,7 +123,7 @@ router.get(
 router.get(
   "/google/callback",
   passport.authenticate("google", {
-    failureRedirect: `${frontend_url}/login`,
+    failureRedirect: `${process.env.GOOGLE_CLIENT_URL}/login`,
     session: true,
   }),
   async (req, res) => {
@@ -137,14 +137,14 @@ router.get(
       // First-time Google signup → login page
       if (req.user.isNewSignup) {
         delete req.user.isNewSignup;
-        return res.redirect(`${frontend_url}/login`);
+        return res.redirect(`${process.env.GOOGLE_CLIENT_URL}/login`);
       }
 
       // Existing user → dashboard
-      return res.redirect(`${frontend_url}/select-idea`);
+      return res.redirect(`${process.env.GOOGLE_CLIENT_URL}/select-idea`);
     } catch (err) {
       console.error("Google callback error:", err);
-      return res.redirect(`${frontend_url}/login`);
+      return res.redirect(`${process.env.GOOGLE_CLIENT_URL}/login`);
     }
   }
 );
