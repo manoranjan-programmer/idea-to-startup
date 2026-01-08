@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Home.css";
 
-const HeroSection = () => {
+const HeroSection = ({ isAuth }) => { // Receive isAuth from parent
   const lineRef = useRef(null);
   const navigate = useNavigate();
 
@@ -14,8 +14,13 @@ const HeroSection = () => {
     }
   }, []);
 
+  // ================= HANDLE GET STARTED =================
   const handleGetStarted = () => {
-    navigate("/login");
+    if (isAuth) {
+      navigate("/select-idea"); // logged in → go to selection
+    } else {
+      navigate("/login"); // not logged in → go to login
+    }
   };
 
   // ✅ About button click

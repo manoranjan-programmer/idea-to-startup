@@ -5,12 +5,11 @@ const { analyzeFeasibility } = require("../controllers/uploadController");
 
 const router = express.Router();
 
-/**
- * ✅ Multer configuration for feasibility document upload
- * - memoryStorage (best for AI processing)
- * - size limit: 20MB
- * - supports PDF, TXT, Images
- */
+/* ================= MULTER CONFIG =================
+   - memoryStorage (best for AI processing)
+   - size limit: 20MB
+   - supports PDF, TXT, Images
+================================================== */
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -39,10 +38,10 @@ const upload = multer({
   },
 });
 
-/**
- * 📊 Upload document → Analyze feasibility using OpenAI
- * Endpoint: POST /api/upload/analyze
- */
+/* =================================================
+   📊 Upload document → Analyze feasibility (Groq AI)
+   Endpoint: POST /api/upload/analyze
+================================================== */
 router.post(
   "/analyze",
   (req, res, next) => {
@@ -56,7 +55,7 @@ router.post(
       next();
     });
   },
-  analyzeFeasibility
+  analyzeFeasibility // ✅ MUST be a function (it is now)
 );
 
 module.exports = router;

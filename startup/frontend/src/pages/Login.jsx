@@ -1,52 +1,88 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import "./Login.css";
 
 const Login = () => {
   const navigate = useNavigate();
-  const location = useLocation(); // to get current route
-  const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const location = useLocation();
+
+  const BASE_URL =
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
+  // 🔔 inline message state
+  const [message, setMessage] = useState(null);
+  // { type: "success" | "error", text: "" }
+
+  const [loading, setLoading] = useState(false);
 
   /* =========================
-     MANUAL LOGIN HANDLER
+     MANUAL LOGIN
   ========================= */
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setMessage(null);
 
-    const email = e.target.email.value;
-    const password = e.target.password.value;
+    const form = e.target;
+    const email = form.email.value.trim();
+    const password = form.password.value;
+
+    if (!email || !password) {
+      setMessage({
+        type: "error",
+        text: "Please fill in both email and password",
+      });
+      return;
+    }
 
     try {
+      setLoading(true);
+
       const res = await fetch(`${BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // important for session
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
 
-      if (res.ok) {
-        // ✅ Redirect to Selection Page or previous page if stored
-        const redirectTo = location.state?.from || "/select-idea";
-        navigate(redirectTo);
-      } else {
-        alert(data.message || "Login failed");
+      if (!res.ok) {
+        setMessage({
+          type: "error",
+          text: data.message || "Invalid email or password",
+        });
+        return;
       }
-    } catch (err) {
-      console.error("Login error:", err);
-      alert("Server error. Please try again later.");
+
+      setMessage({
+        type: "success",
+        text: "Login successful. Redirecting...",
+      });
+
+      const redirectTo = location.state?.from || "/select-idea";
+
+      setTimeout(() => {
+        navigate(redirectTo, { replace: true });
+      }, 700);
+    } catch (error) {
+      console.error("Login error:", error);
+      setMessage({
+        type: "error",
+        text: "Something went wrong. Please try again.",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   /* =========================
-     GOOGLE LOGIN HANDLER
+     GOOGLE LOGIN
   ========================= */
   const handleGoogleLogin = () => {
-    // Preserve current route
-    const currentPath = location.pathname; // e.g., /select-idea
+    const redirectPath = location.state?.from || "/select-idea";
+
     window.location.href = `${BASE_URL}/auth/google?redirect=${encodeURIComponent(
-      currentPath
+      redirectPath
     )}`;
   };
 
@@ -58,8 +94,15 @@ const Login = () => {
           Sign in to your Idea-to-Startup dashboard
         </p>
 
+        {/* 🔔 INLINE MESSAGE */}
+        {message && (
+          <div className={`form-message ${message.type}`}>
+            {message.text}
+          </div>
+        )}
+
         {/* ================= LOGIN FORM ================= */}
-        <form className="login-form" onSubmit={handleSubmit}>
+        <form className="login-form" onSubmit={handleSubmit} noValidate>
           <div className="login-field">
             <label htmlFor="email">Email Address</label>
             <input
@@ -89,13 +132,14 @@ const Login = () => {
               <input type="checkbox" />
               Remember me
             </label>
-            <a href="#" className="reset-link">
+
+            <Link to="/forgot-password" className="reset-link">
               Forgot password?
-            </a>
+            </Link>
           </div>
 
-          <button type="submit" className="login-button">
-            Log In
+          <button type="submit" className="login-button" disabled={loading}>
+            {loading ? "Logging in..." : "Log In"}
           </button>
         </form>
 
@@ -110,7 +154,7 @@ const Login = () => {
         >
           <img
             src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-            alt="Google"
+            alt="Google logo"
           />
           Continue with Google
         </button>

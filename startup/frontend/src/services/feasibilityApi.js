@@ -3,8 +3,7 @@ import axios from "axios";
 /* ======================================================
    BASE URLS
 ====================================================== */
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const API_BASE =import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 const FEASIBILITY_BASE_URL = `${API_BASE}/api/feasibility`;
 const UPLOAD_BASE_URL = `${API_BASE}/api/upload`;
