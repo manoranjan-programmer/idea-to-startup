@@ -23,20 +23,22 @@ const isAuthenticated = (req, res, next) => {
 /* ===========================
    MULTER CONFIG (AVATARS)
 =========================== */
-const uploadDir = path.resolve(__dirname, "..", "uploads", "avatars");
+const uploadDir = path.join(__dirname, "..", "uploads", "avatars");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, uploadDir),
+  destination: uploadDir,
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `avatar_${req.user._id}_${Date.now()}${ext}`);
+    cb(
+      null,
+      `avatar_${req.user._id}_${Date.now()}${path.extname(file.originalname)}`
+    );
   },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (_, file, cb) => {
     const allowed = /jpeg|jpg|png|webp/.test(file.mimetype);
     cb(allowed ? null : new Error("Only images allowed"), allowed);
@@ -48,8 +50,7 @@ const upload = multer({
 =========================== */
 const getAvatarUrl = (avatarPath) => {
   if (!avatarPath) return null;
-  const baseUrl = process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000";
-  return `${baseUrl}${avatarPath}`;
+  return `${process.env.GOOGLE_CALLBACK_URL}${avatarPath}`;
 };
 
 /* ===========================
@@ -57,13 +58,17 @@ const getAvatarUrl = (avatarPath) => {
 =========================== */
 router.post("/signup", async (req, res) => {
   const { name, email, password } = req.body;
+
   if (!name || !email || !password)
     return res.status(400).json({ message: "All fields are required" });
 
-  const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+  const strongPassword =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+
   if (!strongPassword.test(password)) {
     return res.status(400).json({
-      message: "Password must be 8+ chars, include uppercase, lowercase, number & special char",
+      message:
+        "Password must be 8+ chars, include uppercase, lowercase, number & special char",
     });
   }
 
@@ -83,31 +88,43 @@ router.post("/signup", async (req, res) => {
       provider: "local",
       isVerified: false,
       otp: hashedOtp,
-      otpExpiry: Date.now() + 5 * 60 * 1000,
+      otpExpiry: Date.now() + 5 * 60 * 1000, // 5 mins
     });
 
     await transporter.sendMail({
       from: `"Idea to Startup" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Verify your email",
-      html: `<p>Your OTP is <b>${otp}</b></p>`,
+      html: `
+        <h2>Email Verification</h2>
+        <p>Your OTP is:</p>
+        <h3>${otp}</h3>
+        <p>This OTP is valid for 5 minutes.</p>
+      `,
     });
 
-    res.status(201).json({ message: "Signup successful. Verify email." });
+    res.status(201).json({ message: "OTP sent successfully" });
   } catch (err) {
-    console.error("Signup error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Signup / OTP Error:", err);
+    res.status(500).json({ message: "Failed to send OTP" });
   }
 });
 
 /* ===========================
-   VERIFY OTP
+   VERIFY OTP (BUG FIXED)
 =========================== */
 router.post("/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
+
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user.otp || !user.otpExpiry)
+      return res.status(400).json({ message: "OTP not found" });
+
+    if (user.otpExpiry < Date.now())
+      return res.status(400).json({ message: "OTP expired" });
 
     const valid = await bcrypt.compare(otp.toString(), user.otp);
     if (!valid) return res.status(400).json({ message: "Invalid OTP" });
@@ -117,10 +134,10 @@ router.post("/verify-otp", async (req, res) => {
     user.otpExpiry = null;
     await user.save();
 
-    res.json({ message: "Email verified" });
+    res.json({ message: "Email verified successfully" });
   } catch (err) {
     console.error("Verify OTP Error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "OTP verification failed" });
   }
 });
 
@@ -129,6 +146,7 @@ router.post("/verify-otp", async (req, res) => {
 =========================== */
 router.post("/login", async (req, res, next) => {
   const { email, password } = req.body;
+
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: "User not found" });
@@ -153,22 +171,28 @@ router.post("/login", async (req, res, next) => {
 =========================== */
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
+
   try {
     const user = await User.findOne({ email, provider: "local" });
     if (!user) return res.json({ message: "If email exists, reset link sent" });
 
     const token = crypto.randomBytes(32).toString("hex");
-    user.resetPasswordToken = crypto.createHash("sha256").update(token).digest("hex");
+    user.resetPasswordToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
     user.resetPasswordExpiry = Date.now() + 15 * 60 * 1000;
     await user.save();
 
     const resetLink = `${process.env.GOOGLE_CLIENT_URL}/reset-password/${token}`;
+
     await transporter.sendMail({
       from: `"Idea to Startup" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Reset Password",
       html: `<p>Click to reset password:</p><a href="${resetLink}">${resetLink}</a>`,
     });
+
     res.json({ message: "Reset link sent" });
   } catch (err) {
     console.error("Forgot Password Error:", err);
@@ -176,9 +200,6 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-/* ===========================
-   RESET PASSWORD (UPDATED)
-=========================== */
 router.post("/reset-password/:token", async (req, res) => {
   const { password } = req.body;
   const { token } = req.params;

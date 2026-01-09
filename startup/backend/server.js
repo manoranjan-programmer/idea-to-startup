@@ -9,31 +9,41 @@ require("dotenv").config();
 const app = express();
 
 /* ===================== TRUST PROXY ===================== */
-// Needed for secure cookies on Render/Heroku/Railway when using HTTPS
-app.set("trust proxy", 1); 
+// REQUIRED for Render / HTTPS cookies
+app.set("trust proxy", 1);
 
 /* ===================== BODY PARSERS ===================== */
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 /* ===================== CORS CONFIG ===================== */
+/**
+ * IMPORTANT:
+ * - Netlify frontend sends cookies
+ * - Render backend uses HTTPS
+ * - sameSite = none requires secure = true
+ */
 const allowedOrigins = [
-  process.env.GOOGLE_CLIENT_URL, // React frontend prod URL
-  "http://localhost:5173",       
+  process.env.GOOGLE_CLIENT_URL, // Netlify URL
+  "http://localhost:5173",
+  "http://localhost:3000",
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS"));
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
-    credentials: true, // Required for sessions/cookies
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// Handle preflight properly
+app.options(/.*/, cors());
 
 /* ===================== SESSION CONFIG ===================== */
 app.use(
@@ -42,8 +52,9 @@ app.use(
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: {
-      secure: process.env.NODE_ENV === "production", // true on prod (requires HTTPS)
+      secure: process.env.NODE_ENV === "production", // MUST be true on Render
       httpOnly: true,
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 1000 * 60 * 60 * 24, // 1 day
@@ -56,18 +67,10 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 /* ===================== STATIC FILES ===================== */
-/** * FIXED: Use path.join to create an absolute path to the uploads folder.
- * This ensures images are accessible regardless of the process launch directory.
- */
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /* ===================== ROUTES ===================== */
-/**
- * Note: Since we integrated "update-profile" into auth.js in the previous step,
- * you usually only need the auth router. If they are separate files, 
- * the order below works correctly.
- */
-app.use("/auth", require("./routes/auth")); 
+app.use("/auth", require("./routes/auth"));
 app.use("/api/feasibility", require("./routes/feasibility"));
 app.use("/api/upload", require("./routes/uploadRoutes"));
 
@@ -103,5 +106,4 @@ mongoose
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌍 URL: http://localhost:${PORT}`);
 });
