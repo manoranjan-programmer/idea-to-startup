@@ -7,8 +7,8 @@ const fs = require("fs");
 const crypto = require("crypto");
 
 const User = require("../models/User");
-const transporter = require("../config/emailConfig");
 const generateOtp = require("../utils/generateOtp");
+const nodemailer = require("nodemailer");
 
 const router = express.Router();
 
@@ -54,6 +54,45 @@ const getAvatarUrl = (avatarPath) => {
 };
 
 /* ===========================
+   EMAIL TRANSPORTER
+=========================== */
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// Helper function to send OTP with timeout
+const sendOtpEmail = async (email, otp) => {
+  try {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Email sending timed out")), 10000)
+    );
+
+    const mailPromise = transporter.sendMail({
+      from: `"Idea to Startup" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Verify your email",
+      html: `
+        <h2>Email Verification</h2>
+        <p>Your OTP is:</p>
+        <h3>${otp}</h3>
+        <p>This OTP is valid for 5 minutes.</p>
+      `,
+    });
+
+    await Promise.race([mailPromise, timeoutPromise]);
+    console.log(`OTP sent to ${email}: ${otp}`);
+    return true;
+  } catch (err) {
+    console.error("Failed to send OTP:", err.message);
+    return false;
+  }
+};
+
+/* ===========================
    SIGNUP
 =========================== */
 router.post("/signup", async (req, res) => {
@@ -91,27 +130,20 @@ router.post("/signup", async (req, res) => {
       otpExpiry: Date.now() + 5 * 60 * 1000, // 5 mins
     });
 
-    await transporter.sendMail({
-      from: `"Idea to Startup" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Verify your email",
-      html: `
-        <h2>Email Verification</h2>
-        <p>Your OTP is:</p>
-        <h3>${otp}</h3>
-        <p>This OTP is valid for 5 minutes.</p>
-      `,
-    });
+    const emailSent = await sendOtpEmail(email, otp);
+    if (!emailSent) {
+      return res.status(500).json({ message: "Failed to send OTP" });
+    }
 
     res.status(201).json({ message: "OTP sent successfully" });
   } catch (err) {
-    console.error("Signup / OTP Error:", err);
-    res.status(500).json({ message: "Failed to send OTP" });
+    console.error("Signup / OTP Error:", err.message);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
 /* ===========================
-   VERIFY OTP (BUG FIXED)
+   VERIFY OTP
 =========================== */
 router.post("/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
@@ -136,7 +168,7 @@ router.post("/verify-otp", async (req, res) => {
 
     res.json({ message: "Email verified successfully" });
   } catch (err) {
-    console.error("Verify OTP Error:", err);
+    console.error("Verify OTP Error:", err.message);
     res.status(500).json({ message: "OTP verification failed" });
   }
 });
@@ -161,7 +193,7 @@ router.post("/login", async (req, res, next) => {
       res.json({ message: "Login successful" });
     });
   } catch (err) {
-    console.error("Login Error:", err);
+    console.error("Login Error:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -186,16 +218,25 @@ router.post("/forgot-password", async (req, res) => {
 
     const resetLink = `${process.env.GOOGLE_CLIENT_URL}/reset-password/${token}`;
 
-    await transporter.sendMail({
-      from: `"Idea to Startup" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Reset Password",
-      html: `<p>Click to reset password:</p><a href="${resetLink}">${resetLink}</a>`,
-    });
+    // Timeout-safe email sending
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Email sending timed out")), 10000)
+      );
+      const mailPromise = transporter.sendMail({
+        from: `"Idea to Startup" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: "Reset Password",
+        html: `<p>Click to reset password:</p><a href="${resetLink}">${resetLink}</a>`,
+      });
+      await Promise.race([mailPromise, timeoutPromise]);
+    } catch (err) {
+      console.error("Forgot Password Email Error:", err.message);
+    }
 
     res.json({ message: "Reset link sent" });
   } catch (err) {
-    console.error("Forgot Password Error:", err);
+    console.error("Forgot Password Error:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -216,7 +257,6 @@ router.post("/reset-password/:token", async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired reset token" });
     }
 
-    // 🔥 NEW: Check if the new password matches the old password
     const isSamePassword = await bcrypt.compare(password, user.password);
     if (isSamePassword) {
       return res.status(400).json({ 
@@ -238,7 +278,7 @@ router.post("/reset-password/:token", async (req, res) => {
 
     res.json({ message: "Password updated successfully" });
   } catch (err) {
-    console.error("Reset Password Error:", err);
+    console.error("Reset Password Error:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -282,23 +322,20 @@ router.post("/update-profile", isAuthenticated, upload.single("avatar"), async (
       user: { name: user.name, email: user.email, avatar: getAvatarUrl(user.avatar) },
     });
   } catch (err) {
-    console.error("Update Profile Error:", err);
+    console.error("Update Profile Error:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 });
 
 router.post("/remove-avatar", async (req, res) => {
   try {
-    // Example: you are using sessions
-    if (!req.user) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
 
-    req.user.avatar = ""; // remove avatar
+    req.user.avatar = "";
     await req.user.save();
     res.json({ message: "Avatar removed successfully" });
   } catch (err) {
-    console.error(err);
+    console.error("Remove Avatar Error:", err.message);
     res.status(500).json({ message: "Failed to remove avatar" });
   }
 });
@@ -312,7 +349,7 @@ router.get("/me", isAuthenticated, async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json({ name: user.name, email: user.email, avatar: getAvatarUrl(user.avatar) });
   } catch (err) {
-    console.error("Get Me Error:", err);
+    console.error("Get Me Error:", err.message);
     res.status(500).json({ message: "Server error" });
   }
 });
