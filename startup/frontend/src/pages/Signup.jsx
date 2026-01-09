@@ -33,6 +33,7 @@ const Signup = () => {
     try {
       const res = await fetch(`${BASE_URL}/auth/check-email`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: value }),
       });

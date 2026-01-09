@@ -57,26 +57,32 @@ const getAvatarUrl = (avatarPath) => {
 =========================== */
 router.post("/signup", async (req, res) => {
   const { name, email, password } = req.body;
-  if (!name || !email || !password)
-    return res.status(400).json({ message: "All fields are required" });
 
-  const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  const strongPassword =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+
   if (!strongPassword.test(password)) {
     return res.status(400).json({
-      message: "Password must be 8+ chars, include uppercase, lowercase, number & special char",
+      message:
+        "Password must be 8+ chars, include uppercase, lowercase, number & special char",
     });
   }
 
   try {
     const existingUser = await User.findOne({ email });
-    if (existingUser)
+    if (existingUser) {
       return res.status(409).json({ message: "Email already exists" });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 12);
     const otp = generateOtp();
     const hashedOtp = await bcrypt.hash(otp.toString(), 10);
 
-    await User.create({
+    const user = await User.create({
       name,
       email,
       password: hashedPassword,
@@ -86,18 +92,30 @@ router.post("/signup", async (req, res) => {
       otpExpiry: Date.now() + 5 * 60 * 1000,
     });
 
-    await transporter.sendMail({
-      from: `"Idea to Startup" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Verify your email",
-      html: `<p>Your OTP is <b>${otp}</b></p>`,
+    // ✅ SEND RESPONSE FIRST (no more pending)
+    res.status(201).json({
+      message: "Signup successful. Verify email.",
     });
 
-    res.status(201).json({ message: "Signup successful. Verify email." });
+    // ✅ SEND MAIL IN BACKGROUND
+    transporter
+      .sendMail({
+        from: `"Idea to Startup" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: "Verify your email",
+        html: `<p>Your OTP is <b>${otp}</b></p>`,
+      })
+      .catch((err) => {
+        console.error("Email send failed:", err);
+      });
   } catch (err) {
     console.error("Signup error:", err);
     res.status(500).json({ message: "Server error" });
   }
+});
+
+router.get("/signup", (req, res) => {
+  res.send("Signup route working");
 });
 
 /* ===========================
